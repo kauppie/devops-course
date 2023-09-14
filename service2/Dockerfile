@@ -1,15 +1,23 @@
 # Build from source
 FROM rust:1.72.0 AS builder
+
+# Install tools required for musl platform
+RUN apt-get update \
+  && apt-get install --no-install-recommends -y musl-tools
+RUN rustup target add x86_64-unknown-linux-musl
+
 WORKDIR /build
+
 COPY Cargo.lock Cargo.toml ./
 COPY src/* ./src/
-RUN cargo install --path .
+
+RUN cargo install --target x86_64-unknown-linux-musl --path .
 
 # Install
-FROM rust:1.72.0-slim AS release
+FROM alpine:3.18 AS release
 WORKDIR /app
-COPY --from=builder /build/target/release/service2 ./svc2
+COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/service2 /usr/bin/svc2
 
 EXPOSE 8000
 
-CMD ["/app/svc2"]
+CMD ["/bin/sh", "-c", "svc2"]
