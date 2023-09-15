@@ -5,6 +5,8 @@ services:
       - skynet
     volumes:
       - ./logs:/app/logs
+    environment:
+      - "SERVICE2=service2"
 
   service2:
     build: ./service2

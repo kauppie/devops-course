@@ -10,11 +10,14 @@ import (
 	"time"
 )
 
-const (
-	SERVICE2_ADDRESS = "service2:8000"
-)
-
 func main() {
+	// Lookup service 2 address or default to expected value.
+	svc2Address, ok := os.LookupEnv("SERVICE2")
+	if !ok {
+		svc2Address = "service2"
+	}
+	fullSvc2Address := svc2Address + ":8000"
+
 	// Create service 1 specific log file.
 	logFile, err := createLogFile()
 	if err != nil {
@@ -24,7 +27,7 @@ func main() {
 
 	// Send 20 texts to service 2.
 	for i := 1; i <= 20; i++ {
-		addresses, err := resolveAddresses()
+		addresses, err := resolveAddresses(fullSvc2Address)
 		if err != nil {
 			logFile.WriteString(fmt.Sprintln(err.Error()))
 		} else {
@@ -38,7 +41,7 @@ func main() {
 		<-time.After(2 * time.Second)
 	}
 
-	addresses, err := resolveAddresses()
+	addresses, err := resolveAddresses(fullSvc2Address)
 	if err != nil {
 		logFile.WriteString(fmt.Sprintln(err.Error()))
 		return
@@ -91,8 +94,8 @@ type Addresses struct {
 }
 
 // Resolve domain name to TCP and HTTP addresses.
-func resolveAddresses() (*Addresses, error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
+func resolveAddresses(serviceAddress string) (*Addresses, error) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", serviceAddress)
 	if err != nil {
 		return nil, err
 	}
