@@ -32,9 +32,7 @@ async fn main() -> Result<(), StdError> {
 
     axum::Server::bind(&socket_address)
         .serve(router.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(async {
-            let _ = shutdown_rx.await;
-        })
+        .with_graceful_shutdown(shutdown_signal(shutdown_rx))
         .await
         .expect("failed to start or run the service");
 
@@ -65,4 +63,32 @@ async fn request_handler(
         file.write_all(log_line.as_bytes())
             .expect("failed to write to log file");
     }
+}
+
+/// Enables graceful shutdown on Ctrl+C and termination signal.
+async fn shutdown_signal(shutdown_rx: oneshot::Receiver<()>) {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        use tokio::signal::unix;
+
+        unix::signal(unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = shutdown_rx => (),
+        _ = ctrl_c => (),
+        _ = terminate => (),
+    };
 }
