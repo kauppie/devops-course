@@ -6,68 +6,101 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
 const (
-	PLAIN_CONTENT_TYPE = "text/plain"
-	SERVICE2_ADDRESS   = "service2:8000"
+	SERVICE2_ADDRESS = "service2:8000"
 )
 
 func main() {
 	// Create service 1 specific log file.
-	newpath := filepath.Join(".", "logs")
-	err := os.MkdirAll(newpath, os.ModePerm)
+	logFile, err := createLogFile()
 	if err != nil {
-		log.Fatal("failed to create directory: ", err)
-	}
-	logFile, err := os.Create("logs/service1.log")
-	if err != nil {
-		log.Fatal("failed to create file: ", err)
+		log.Fatal("failed to create log file: ", err)
 	}
 	defer logFile.Close()
 
 	// Send 20 texts to service 2.
 	for i := 1; i <= 20; i++ {
-		tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
-		if err != nil {
-			logFile.WriteString(fmt.Sprintln(err.Error()))
-
-			// Wait 2 seconds between requests.
-			<-time.After(2 * time.Second)
-			continue
-		}
-		httpAddress := fmt.Sprintf("http://%v/", tcpAddr)
-
-		timestamp := time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
-		line := fmt.Sprintf("%d %v %s", i, timestamp, tcpAddr)
-
-		logFile.WriteString(fmt.Sprintf("%s\n", line))
-		reader := strings.NewReader(line)
-
-		resp, err := http.Post(httpAddress, PLAIN_CONTENT_TYPE, reader)
+		addresses, err := resolveAddresses()
 		if err != nil {
 			logFile.WriteString(fmt.Sprintln(err.Error()))
 		} else {
-			resp.Body.Close()
+			timestamp := time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
+			line := fmt.Sprintf("%d %v %s", i, timestamp, addresses.tcpAddr)
+
+			logAndPost(line, addresses.httpAddr, logFile)
 		}
 
 		// Wait 2 seconds between requests.
 		<-time.After(2 * time.Second)
 	}
 
-	logFile.WriteString("STOP\n")
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
+	addresses, err := resolveAddresses()
 	if err != nil {
 		logFile.WriteString(fmt.Sprintln(err.Error()))
 		return
 	}
-	httpAddress := fmt.Sprintf("http://%v/", tcpAddr)
 
 	// Stop communication by sending signal.
-	reader := strings.NewReader("STOP")
-	http.Post(httpAddress, PLAIN_CONTENT_TYPE, reader)
+	logAndPost("STOP", addresses.httpAddr, logFile)
+}
+
+func createLogFile() (*os.File, error) {
+	err := os.MkdirAll("./logs", os.ModePerm)
+	if err != nil {
+		return nil, err
+	}
+	logFile, err := os.Create("logs/service1.log")
+	if err != nil {
+		return nil, err
+	}
+
+	return logFile, nil
+}
+
+// Helper to log and post the next line.
+func logAndPost(line, httpAddr string, file *os.File) {
+	file.WriteString(line + "\n")
+
+	err := postString(httpAddr, line)
+	if err != nil {
+		file.WriteString(fmt.Sprintln(err.Error()))
+	}
+}
+
+// Do a POST request at given HTTP address with given body string.
+func postString(httpAddr, str string) error {
+	reader := strings.NewReader(str)
+
+	resp, err := http.Post(httpAddr, "text/plain", reader)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	return nil
+}
+
+// Container for TCP address corresponding HTTP address.
+type Addresses struct {
+	tcpAddr  *net.TCPAddr
+	httpAddr string
+}
+
+// Resolve domain name to TCP and HTTP addresses.
+func resolveAddresses() (*Addresses, error) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
+	if err != nil {
+		return nil, err
+	}
+
+	httpAddr := fmt.Sprintf("http://%v/", tcpAddr)
+
+	return &Addresses{
+		tcpAddr:  tcpAddr,
+		httpAddr: httpAddr,
+	}, nil
 }
