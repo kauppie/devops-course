@@ -1,0 +1,17 @@
+services:
+  service1:
+    build: ./service1
+    networks:
+      - skynet
+    volumes:
+      - ./logs:/app/logs
+
+  service2:
+    build: ./service2
+    networks:
+      - skynet
+    volumes:
+      - ./logs:/app/logs
+
+networks:
+  skynet: {}

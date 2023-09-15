@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 const (
 	PLAIN_CONTENT_TYPE = "text/plain"
+	SERVICE2_ADDRESS   = "service2:8000"
 )
 
 func main() {
@@ -27,20 +29,29 @@ func main() {
 	}
 	defer logFile.Close()
 
-	serverAddress := "127.0.0.1:8000"
-	httpAddress := fmt.Sprintf("http://%s", serverAddress)
-
 	// Send 20 texts to service 2.
 	for i := 1; i <= 20; i++ {
+		tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
+		if err != nil {
+			logFile.WriteString(fmt.Sprintln(err.Error()))
+
+			// Wait 2 seconds between requests.
+			<-time.After(2 * time.Second)
+			continue
+		}
+		httpAddress := fmt.Sprintf("http://%v/", tcpAddr)
+
 		timestamp := time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
-		line := fmt.Sprintf("%d %v %s", i, timestamp, serverAddress)
+		line := fmt.Sprintf("%d %v %s", i, timestamp, tcpAddr)
 
 		logFile.WriteString(fmt.Sprintf("%s\n", line))
 		reader := strings.NewReader(line)
 
-		_, err = http.Post(httpAddress, PLAIN_CONTENT_TYPE, reader)
+		resp, err := http.Post(httpAddress, PLAIN_CONTENT_TYPE, reader)
 		if err != nil {
 			logFile.WriteString(fmt.Sprintln(err.Error()))
+		} else {
+			resp.Body.Close()
 		}
 
 		// Wait 2 seconds between requests.
@@ -48,6 +59,13 @@ func main() {
 	}
 
 	logFile.WriteString("STOP\n")
+
+	tcpAddr, err := net.ResolveTCPAddr("tcp", SERVICE2_ADDRESS)
+	if err != nil {
+		logFile.WriteString(fmt.Sprintln(err.Error()))
+		return
+	}
+	httpAddress := fmt.Sprintf("http://%v/", tcpAddr)
 
 	// Stop communication by sending signal.
 	reader := strings.NewReader("STOP")
