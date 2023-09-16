@@ -16,4 +16,5 @@ services:
       - ./logs:/app/logs
 
 networks:
-  skynet: {}
+  skynet:
+    driver: bridge
