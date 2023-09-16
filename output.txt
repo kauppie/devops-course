@@ -1,0 +1,11 @@
+$ docker container ls
+CONTAINER ID   IMAGE                     COMMAND             CREATED         STATUS         PORTS      NAMES
+2c43077cd7aa   devops-kauppie-service1   "/bin/sh -c svc1"   9 seconds ago   Up 8 seconds              devops-kauppie-service1-1
+3836d81294f7   devops-kauppie-service2   "/bin/sh -c svc2"   9 seconds ago   Up 8 seconds   8000/tcp   devops-kauppie-service2-1
+
+$ docker network ls
+NETWORK ID     NAME                    DRIVER    SCOPE
+1183d950fcbc   bridge                  bridge    local
+721a0e8a182e   devops_kauppie-skynet   bridge    local
+ac8174b42c35   host                    host      local
+0df8e6aa605e   none                    null      local
