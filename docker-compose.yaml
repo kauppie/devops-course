@@ -1,20 +1,21 @@
 services:
-  service1:
-    build: ./service1
+  kauppie-service1:
+    build: "./service1"
     networks:
-      - skynet
+      - kauppie-skynet
     volumes:
-      - ./logs:/app/logs
+      - "./logs:/app/logs"
     environment:
-      - "SERVICE2=service2"
+      # Specify name of service 2 for resolving its address.
+      - "SERVICE2=kauppie-service2"
 
-  service2:
-    build: ./service2
+  kauppie-service2:
+    build: "./service2"
     networks:
-      - skynet
+      - kauppie-skynet
     volumes:
-      - ./logs:/app/logs
+      - "./logs:/app/logs"
 
 networks:
-  skynet:
+  kauppie-skynet:
     driver: bridge
