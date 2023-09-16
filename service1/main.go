@@ -51,6 +51,7 @@ func main() {
 	logAndPost("STOP", addresses.httpAddr, logFile)
 }
 
+// Creates the log file.
 func createLogFile() (*os.File, error) {
 	err := os.MkdirAll("./logs", os.ModePerm)
 	if err != nil {
@@ -74,7 +75,7 @@ func logAndPost(line, httpAddr string, file *os.File) {
 	}
 }
 
-// Do a POST request at given HTTP address with given body string.
+// Does a POST request at given HTTP address with given body string.
 func postString(httpAddr, str string) error {
 	reader := strings.NewReader(str)
 
@@ -87,13 +88,13 @@ func postString(httpAddr, str string) error {
 	return nil
 }
 
-// Container for TCP address corresponding HTTP address.
+// Container for TCP address and its corresponding HTTP address.
 type Addresses struct {
 	tcpAddr  *net.TCPAddr
 	httpAddr string
 }
 
-// Resolve domain name to TCP and HTTP addresses.
+// Resolves domain name to TCP and HTTP addresses.
 func resolveAddresses(serviceAddress string) (*Addresses, error) {
 	tcpAddr, err := net.ResolveTCPAddr("tcp", serviceAddress)
 	if err != nil {

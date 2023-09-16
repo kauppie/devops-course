@@ -23,13 +23,17 @@ async fn main() -> Result<(), StdError> {
     // Create channel for shutting down the server.
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
+    // Create shared state for allowing handler to interact with log file and stop the service.
     let shared_state = Arc::new(Mutex::new((log_file, Some(shutdown_tx))));
+
+    // Create router with single POST handler and select socket address.
     let router = Router::new().route("/", routing::post(request_handler).with_state(shared_state));
     let socket_address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8000));
 
     // Wait 2 seconds before starting the server.
     tokio::time::sleep(Duration::from_secs(2)).await;
 
+    // Bind and start the server.
     axum::Server::bind(&socket_address)
         .serve(router.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal(shutdown_rx))
@@ -65,12 +69,12 @@ async fn request_handler(
     }
 }
 
-/// Enables graceful shutdown on Ctrl+C and termination signal.
+/// Enables graceful shutdown on Ctrl+C, termination or STOP signal.
 async fn shutdown_signal(shutdown_rx: oneshot::Receiver<()>) {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to install Ctrl+C handler");
+            .expect("failed to listen for Ctrl+C");
     };
 
     #[cfg(unix)]
@@ -86,6 +90,7 @@ async fn shutdown_signal(shutdown_rx: oneshot::Receiver<()>) {
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
+    // Wait concurrently for any termination signal.
     tokio::select! {
         _ = shutdown_rx => (),
         _ = ctrl_c => (),
