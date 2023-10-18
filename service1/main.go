@@ -32,7 +32,7 @@ func main() {
 			logFile.WriteString(fmt.Sprintln(err.Error()))
 		} else {
 			timestamp := time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
-			line := fmt.Sprintf("%d %v %s", i, timestamp, addresses.tcpAddr)
+			line := fmt.Sprintf("SND %d %v %s", i, timestamp, addresses.tcpAddr)
 
 			logAndPost(line, addresses.httpAddr, logFile)
 		}
