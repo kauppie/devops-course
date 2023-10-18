@@ -1,5 +1,5 @@
 # Build from source
-FROM rust:1.72.0 AS builder
+FROM rust:1.72 AS builder
 
 # Install tools required for musl platform
 RUN apt-get update \
@@ -8,8 +8,7 @@ RUN rustup target add x86_64-unknown-linux-musl
 
 WORKDIR /build
 
-COPY Cargo.lock Cargo.toml ./
-COPY src/* ./src/
+COPY . ./
 
 RUN cargo install --target x86_64-unknown-linux-musl --path .
 
