@@ -11,9 +11,10 @@ import (
 type Publisher struct {
 	channel *amqp.Channel
 	conn    *amqp.Connection
+	topic   string
 }
 
-func NewPublisher(addr string) (*Publisher, error) {
+func NewPublisher(addr, topic string) (*Publisher, error) {
 	conn, err := amqp.Dial(addr)
 	for err != nil {
 		logrus.Warn("failed to connect; retrying in 2 seconds")
@@ -28,7 +29,7 @@ func NewPublisher(addr string) (*Publisher, error) {
 	}
 
 	err = ch.ExchangeDeclare(
-		LogsTopic,
+		topic,
 		"topic",
 		true,
 		false,
@@ -43,6 +44,7 @@ func NewPublisher(addr string) (*Publisher, error) {
 	return &Publisher{
 		channel: ch,
 		conn:    conn,
+		topic:   topic,
 	}, nil
 }
 
@@ -61,7 +63,7 @@ func (p *Publisher) Publish(body string) error {
 	defer cancel()
 
 	return p.channel.PublishWithContext(ctx,
-		LogsTopic,
+		p.topic,
 		"",
 		false,
 		false,

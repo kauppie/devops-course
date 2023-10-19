@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	LogsTopic = "logs"
+	LogsTopic = "log"
 
 	EnvVarRabbitMqAddr = "RABBITMQ_ADDR"
 )

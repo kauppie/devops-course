@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	LogsTopic = "logs"
+	LogsTopic     = "log"
+	MessagesTopic = "message"
 
 	EnvVarRabbitMqAddr = "RABBITMQ_ADDR"
 )
@@ -25,82 +26,60 @@ func main() {
 	}
 	fullSvc2Address := svc2Address + ":8000"
 
-	// Create service 1 specific log file.
-	logFile, err := createLogFile()
-	if err != nil {
-		logrus.Fatal("failed to create log file: ", err)
-	}
-	defer logFile.Close()
-
 	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
-	publisher, err := NewPublisher(rabbitmqAddr)
+
+	logsPub, err := NewPublisher(rabbitmqAddr, LogsTopic)
 	if err != nil {
 		logrus.Fatal("failed to create publisher:", err)
 	}
-	defer publisher.Close()
+	defer logsPub.Close()
+
+	msgsPub, err := NewPublisher(rabbitmqAddr, MessagesTopic)
+	if err != nil {
+		logrus.Fatal("failed to create publisher:", err)
+	}
+	defer msgsPub.Close()
 
 	// Send 20 texts to service 2.
 	for i := 1; i <= 20; i++ {
 		addresses, err := resolveAddresses(fullSvc2Address)
 		if err != nil {
-			logFile.WriteString(fmt.Sprintln(err.Error()))
+			logsPub.Publish(err.Error())
 		} else {
-			timestamp := time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
+			timestamp := timestampNow()
 			line := fmt.Sprintf("SND %d %v %s", i, timestamp, addresses.tcpAddr)
 
-			logAndPost(line, addresses.httpAddr, logFile)
-			publisher.Publish(line)
+			// Send message to 'message' topic.
+			if err := msgsPub.Publish(line); err != nil {
+				// Report error.
+				logsPub.Publish(err.Error())
+			}
+
+			// Send message via HTTP to service 2.
+			resp, err := http.Post(addresses.httpAddr, "text/plain", strings.NewReader(line))
+			if err != nil {
+				// Report error.
+				logsPub.Publish(err.Error())
+			} else {
+				// Send response code and timestamp to 'log' topic.
+				logsPub.Publish(fmt.Sprintf("%d %s", resp.StatusCode, timestamp))
+			}
 		}
 
 		// Wait 2 seconds between requests.
 		<-time.After(2 * time.Second)
 	}
 
-	addresses, err := resolveAddresses(fullSvc2Address)
-	if err != nil {
-		logFile.WriteString(fmt.Sprintln(err.Error()))
-		return
-	}
+	// Send stop signal.
+	logsPub.Publish("SND STOP")
 
-	// Stop communication by sending signal.
-	logAndPost("STOP", addresses.httpAddr, logFile)
+	// Wait until program is terminated.
+	var wait chan struct{}
+	<-wait
 }
 
-// Creates the log file.
-func createLogFile() (*os.File, error) {
-	err := os.MkdirAll("./logs", os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-	logFile, err := os.Create("logs/service1.log")
-	if err != nil {
-		return nil, err
-	}
-
-	return logFile, nil
-}
-
-// Helper to log and post the next line.
-func logAndPost(line, httpAddr string, file *os.File) {
-	file.WriteString(line + "\n")
-
-	err := postString(httpAddr, line)
-	if err != nil {
-		file.WriteString(fmt.Sprintln(err.Error()))
-	}
-}
-
-// Does a POST request at given HTTP address with given body string.
-func postString(httpAddr, str string) error {
-	reader := strings.NewReader(str)
-
-	resp, err := http.Post(httpAddr, "text/plain", reader)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-
-	return nil
+func timestampNow() string {
+	return time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
 }
 
 // Container for TCP address and its corresponding HTTP address.
