@@ -2,12 +2,19 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
+)
+
+const (
+	LogsTopic = "logs"
+
+	EnvVarRabbitMqAddr = "RABBITMQ_ADDR"
 )
 
 func main() {
@@ -21,9 +28,16 @@ func main() {
 	// Create service 1 specific log file.
 	logFile, err := createLogFile()
 	if err != nil {
-		log.Fatal("failed to create log file: ", err)
+		logrus.Fatal("failed to create log file: ", err)
 	}
 	defer logFile.Close()
+
+	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
+	publisher, err := NewPublisher(rabbitmqAddr)
+	if err != nil {
+		logrus.Fatal("failed to create publisher:", err)
+	}
+	defer publisher.Close()
 
 	// Send 20 texts to service 2.
 	for i := 1; i <= 20; i++ {
@@ -35,6 +49,7 @@ func main() {
 			line := fmt.Sprintf("SND %d %v %s", i, timestamp, addresses.tcpAddr)
 
 			logAndPost(line, addresses.httpAddr, logFile)
+			publisher.Publish(line)
 		}
 
 		// Wait 2 seconds between requests.

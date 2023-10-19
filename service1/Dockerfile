@@ -1,7 +1,7 @@
 # Build from source
 FROM golang:1.21.3-bookworm AS builder
 WORKDIR /build
-COPY go.mod main.go ./
+COPY . ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o ./svc1
 
 # Install
