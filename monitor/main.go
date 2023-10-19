@@ -4,8 +4,10 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -37,7 +39,15 @@ func (s *LogStorage) Get() string {
 func main() {
 	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
 
-	subscriber, err := NewSubscriber(rabbitmqAddr)
+	conn, err := amqp.Dial(rabbitmqAddr)
+	for err != nil {
+		logrus.Warn("failed to connect; retrying in 2 seconds")
+		<-time.After(2 * time.Second)
+
+		conn, err = amqp.Dial(rabbitmqAddr)
+	}
+
+	subscriber, err := NewSubscriber(conn)
 	if err != nil {
 		logrus.Fatal("failed to create a subscriber: ", err)
 	}

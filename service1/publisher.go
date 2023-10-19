@@ -5,24 +5,14 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/sirupsen/logrus"
 )
 
 type Publisher struct {
 	channel *amqp.Channel
-	conn    *amqp.Connection
 	topic   string
 }
 
-func NewPublisher(addr, topic string) (*Publisher, error) {
-	conn, err := amqp.Dial(addr)
-	for err != nil {
-		logrus.Warn("failed to connect; retrying in 2 seconds")
-		conn, err = amqp.Dial(addr)
-
-		<-time.After(2 * time.Second)
-	}
-
+func NewPublisher(conn *amqp.Connection, topic string) (*Publisher, error) {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, err
@@ -41,18 +31,26 @@ func NewPublisher(addr, topic string) (*Publisher, error) {
 		return nil, err
 	}
 
+	_, err = ch.QueueDeclare(
+		topic,
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Publisher{
 		channel: ch,
-		conn:    conn,
 		topic:   topic,
 	}, nil
 }
 
 func (p *Publisher) Close() error {
 	if err := p.channel.Close(); err != nil {
-		return err
-	}
-	if err := p.conn.Close(); err != nil {
 		return err
 	}
 	return nil
@@ -64,7 +62,7 @@ func (p *Publisher) Publish(body string) error {
 
 	return p.channel.PublishWithContext(ctx,
 		p.topic,
-		"",
+		"#",
 		false,
 		false,
 		amqp.Publishing{

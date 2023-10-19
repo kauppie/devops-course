@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,14 +28,22 @@ func main() {
 	fullSvc2Address := svc2Address + ":8000"
 
 	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
+	conn, err := amqp.Dial(rabbitmqAddr)
+	for err != nil {
+		logrus.Warn("failed to connect; retrying in 2 seconds")
+		<-time.After(2 * time.Second)
 
-	logsPub, err := NewPublisher(rabbitmqAddr, LogsTopic)
+		conn, err = amqp.Dial(rabbitmqAddr)
+	}
+	defer conn.Close()
+
+	logsPub, err := NewPublisher(conn, LogsTopic)
 	if err != nil {
 		logrus.Fatal("failed to create publisher:", err)
 	}
 	defer logsPub.Close()
 
-	msgsPub, err := NewPublisher(rabbitmqAddr, MessagesTopic)
+	msgsPub, err := NewPublisher(conn, MessagesTopic)
 	if err != nil {
 		logrus.Fatal("failed to create publisher:", err)
 	}

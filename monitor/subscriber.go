@@ -1,10 +1,7 @@
 package main
 
 import (
-	"time"
-
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/sirupsen/logrus"
 )
 
 type Subscriber struct {
@@ -13,15 +10,7 @@ type Subscriber struct {
 	queueName string
 }
 
-func NewSubscriber(addr string) (*Subscriber, error) {
-	conn, err := amqp.Dial(addr)
-	for err != nil {
-		logrus.Warn("failed to connect; retrying in 2 seconds")
-		conn, err = amqp.Dial(addr)
-
-		<-time.After(2 * time.Second)
-	}
-
+func NewSubscriber(conn *amqp.Connection) (*Subscriber, error) {
 	channel, err := conn.Channel()
 	if err != nil {
 		return nil, err
@@ -41,10 +30,10 @@ func NewSubscriber(addr string) (*Subscriber, error) {
 	}
 
 	queue, err := channel.QueueDeclare(
-		"",
+		LogsTopic,
 		false,
 		false,
-		true,
+		false,
 		false,
 		nil,
 	)
@@ -54,7 +43,7 @@ func NewSubscriber(addr string) (*Subscriber, error) {
 
 	err = channel.QueueBind(
 		queue.Name,
-		"",
+		"#",
 		LogsTopic,
 		false,
 		nil)
@@ -72,7 +61,7 @@ func NewSubscriber(addr string) (*Subscriber, error) {
 func (s *Subscriber) Channel() (<-chan amqp.Delivery, error) {
 	return s.channel.Consume(
 		s.queueName,
-		"",
+		"monitor",
 		true,
 		false,
 		false,

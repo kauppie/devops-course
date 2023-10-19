@@ -1,8 +1,5 @@
 use std::{
-    fs,
-    io::Write,
     net::{Ipv4Addr, SocketAddr},
-    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -10,33 +7,110 @@ use axum::{
     extract::{ConnectInfo, State},
     routing, Router,
 };
-use tokio::sync::oneshot;
+use futures_lite::stream::StreamExt;
 
 type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 #[tokio::main]
 async fn main() -> Result<(), StdError> {
-    // Create truncated log file.
-    fs::create_dir_all("logs")?;
-    let log_file = fs::File::create("logs/service2.log")?;
+    // Wait 2 seconds before starting.
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // Create channel for shutting down the server.
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let rabbit_addr = std::env::var("RABBITMQ_ADDR").unwrap_or_default();
 
-    // Create shared state for allowing handler to interact with log file and stop the service.
-    let shared_state = Arc::new(Mutex::new((log_file, Some(shutdown_tx))));
+    let conn = loop {
+        match lapin::Connection::connect(
+            &rabbit_addr,
+            lapin::ConnectionProperties::default().with_connection_name("service2".into()),
+        )
+        .await
+        {
+            Ok(conn) => break conn,
+            Err(_) => {
+                eprintln!("failed to connect; retrying in 2 seconds");
+                tokio::time::sleep(Duration::from_secs(2)).await
+            }
+        }
+    };
+
+    let log_channel = conn.create_channel().await?;
+    log_channel
+        .queue_declare(
+            "log",
+            lapin::options::QueueDeclareOptions::default(),
+            lapin::types::FieldTable::default(),
+        )
+        .await?;
+
+    let msg_channel = conn.create_channel().await?;
+    msg_channel
+        .queue_declare(
+            "message",
+            lapin::options::QueueDeclareOptions::default(),
+            lapin::types::FieldTable::default(),
+        )
+        .await?;
+
+    msg_channel
+        .queue_bind(
+            "message",
+            "message",
+            "#",
+            lapin::options::QueueBindOptions::default(),
+            lapin::types::FieldTable::default(),
+        )
+        .await?;
+
+    let mut consumer = msg_channel
+        .basic_consume(
+            "message",
+            "service2",
+            lapin::options::BasicConsumeOptions::default(),
+            lapin::types::FieldTable::default(),
+        )
+        .await?;
+
+    tokio::spawn({
+        let log_channel = log_channel.clone();
+        async move {
+            eprintln!("here we are");
+
+            while let Some(delivery) = consumer.next().await {
+                let delivery = delivery.expect("error in consumer");
+                delivery
+                    .ack(lapin::options::BasicAckOptions::default())
+                    .await
+                    .expect("failed to ack");
+
+                eprintln!("service2 got delivery");
+
+                let delivery_data = String::from_utf8_lossy(&delivery.data);
+                let log_line = format!("{delivery_data} MSG");
+
+                log_channel
+                    .basic_publish(
+                        "log",
+                        "",
+                        lapin::options::BasicPublishOptions::default(),
+                        log_line.as_bytes(),
+                        lapin::BasicProperties::default(),
+                    )
+                    .await
+                    .expect("failed to publish")
+                    .await
+                    .expect("failed to publish");
+            }
+        }
+    });
 
     // Create router with single POST handler and select socket address.
-    let router = Router::new().route("/", routing::post(request_handler).with_state(shared_state));
+    let router = Router::new().route("/", routing::post(request_handler).with_state(log_channel));
     let socket_address = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 8000));
-
-    // Wait 2 seconds before starting the server.
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Bind and start the server.
     axum::Server::bind(&socket_address)
         .serve(router.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal(shutdown_rx))
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("failed to start or run the service");
 
@@ -45,32 +119,28 @@ async fn main() -> Result<(), StdError> {
 
 /// Handler of incoming POST requests at root address.
 async fn request_handler(
-    State(state): State<Arc<Mutex<(fs::File, Option<oneshot::Sender<()>>)>>>,
+    State(channel): State<lapin::Channel>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     data: String,
 ) {
-    let mut guard = state.lock().unwrap();
+    let log_line = format!("{data} {addr}");
 
-    // Stop service on STOP signal.
-    if data == "STOP" {
-        let shutdown_tx = &mut guard.1;
-
-        if let Some(shutdown_tx) = shutdown_tx.take() {
-            shutdown_tx
-                .send(())
-                .expect("failed to send shutdown signal");
-        }
-    } else {
-        let file = &mut guard.0;
-
-        let log_line = format!("{data} {addr}\n");
-        file.write_all(log_line.as_bytes())
-            .expect("failed to write to log file");
-    }
+    channel
+        .basic_publish(
+            "log",
+            "",
+            lapin::options::BasicPublishOptions::default(),
+            log_line.as_bytes(),
+            lapin::BasicProperties::default(),
+        )
+        .await
+        .expect("failed to publish")
+        .await
+        .expect("failed to publish");
 }
 
-/// Enables graceful shutdown on Ctrl+C, termination or STOP signal.
-async fn shutdown_signal(shutdown_rx: oneshot::Receiver<()>) {
+/// Enables graceful shutdown on Ctrl+C, or termination signal.
+async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
@@ -92,7 +162,6 @@ async fn shutdown_signal(shutdown_rx: oneshot::Receiver<()>) {
 
     // Wait concurrently for any termination signal.
     tokio::select! {
-        _ = shutdown_rx => (),
         _ = ctrl_c => (),
         _ = terminate => (),
     };

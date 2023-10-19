@@ -6,7 +6,7 @@ services:
     environment:
       # Specify name of service 2 for resolving its address.
       - "SERVICE2=kauppie-service2"
-      - "RABBITMQ_ADDR=amqp://guest:guest@rabbitmq:5672/"
+      - "RABBITMQ_ADDR=amqp://guest:guest@rabbitmq:5672"
     depends_on:
       - kauppie-rabbitmq
 
@@ -14,6 +14,8 @@ services:
     build: "./service2"
     networks:
       - kauppie-skynet
+    environment:
+      - "RABBITMQ_ADDR=amqp://guest:guest@rabbitmq:5672"
     depends_on:
       - kauppie-rabbitmq
 
@@ -23,7 +25,7 @@ services:
     networks:
       - kauppie-skynet
     environment:
-      - "RABBITMQ_ADDR=amqp://guest:guest@rabbitmq:5672/"
+      - "RABBITMQ_ADDR=amqp://guest:guest@rabbitmq:5672"
     depends_on:
       - kauppie-rabbitmq
     ports:
