@@ -8,6 +8,11 @@ use axum::{
     routing, Router,
 };
 use futures_lite::stream::StreamExt;
+use lapin::{
+    options::{BasicConsumeOptions, BasicPublishOptions, QueueBindOptions, QueueDeclareOptions},
+    types::FieldTable,
+    BasicProperties, ConnectionProperties,
+};
 
 type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -16,12 +21,12 @@ async fn main() -> Result<(), StdError> {
     // Wait 2 seconds before starting.
     tokio::time::sleep(Duration::from_secs(2)).await;
 
+    // Retry until RabbitMQ connection is established.
     let rabbit_addr = std::env::var("RABBITMQ_ADDR").unwrap_or_default();
-
     let conn = loop {
         match lapin::Connection::connect(
             &rabbit_addr,
-            lapin::ConnectionProperties::default().with_connection_name("service2".into()),
+            ConnectionProperties::default().with_connection_name("service2".into()),
         )
         .await
         {
@@ -33,62 +38,62 @@ async fn main() -> Result<(), StdError> {
         }
     };
 
+    // Create channel for log topic.
     let log_channel = conn.create_channel().await?;
     log_channel
-        .queue_declare(
-            "log",
-            lapin::options::QueueDeclareOptions::default(),
-            lapin::types::FieldTable::default(),
-        )
+        .queue_declare("log", QueueDeclareOptions::default(), FieldTable::default())
         .await?;
 
+    // Create channel for message topic.
     let msg_channel = conn.create_channel().await?;
     msg_channel
         .queue_declare(
             "message",
-            lapin::options::QueueDeclareOptions::default(),
-            lapin::types::FieldTable::default(),
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
         )
         .await?;
 
+    // Bind to message queue if not already.
     msg_channel
         .queue_bind(
             "message",
             "message",
             "#",
-            lapin::options::QueueBindOptions::default(),
-            lapin::types::FieldTable::default(),
+            QueueBindOptions::default(),
+            FieldTable::default(),
         )
         .await?;
 
+    // Create message channel consumer.
     let mut consumer = msg_channel
         .basic_consume(
             "message",
             "service2",
-            lapin::options::BasicConsumeOptions {
+            BasicConsumeOptions {
                 no_ack: true,
-                ..lapin::options::BasicConsumeOptions::default()
+                ..BasicConsumeOptions::default()
             },
-            lapin::types::FieldTable::default(),
+            FieldTable::default(),
         )
         .await?;
 
+    // Spawn message queue listener.
     tokio::spawn({
         let log_channel = log_channel.clone();
         async move {
-            while let Some(delivery) = consumer.next().await {
-                let delivery = delivery.expect("error in consumer");
-
+            while let Some(Ok(delivery)) = consumer.next().await {
                 let delivery_data = String::from_utf8_lossy(&delivery.data);
                 let log_line = format!("{delivery_data} MSG");
 
+                // Publish message from message topic to log topic.
                 log_channel
                     .basic_publish(
                         "log",
-                        "",
-                        lapin::options::BasicPublishOptions::default(),
+                        "#",
+                        BasicPublishOptions::default(),
                         log_line.as_bytes(),
-                        lapin::BasicProperties::default(),
+                        BasicProperties::default(),
                     )
                     .await
                     .expect("failed to publish")
@@ -120,13 +125,14 @@ async fn request_handler(
 ) {
     let log_line = format!("{data} {addr}");
 
+    // Publish HTTP post requests to log topic.
     channel
         .basic_publish(
             "log",
             "",
-            lapin::options::BasicPublishOptions::default(),
+            BasicPublishOptions::default(),
             log_line.as_bytes(),
-            lapin::BasicProperties::default(),
+            BasicProperties::default(),
         )
         .await
         .expect("failed to publish")
