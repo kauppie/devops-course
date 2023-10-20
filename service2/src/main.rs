@@ -9,9 +9,12 @@ use axum::{
 };
 use futures_lite::stream::StreamExt;
 use lapin::{
-    options::{BasicConsumeOptions, BasicPublishOptions, QueueBindOptions, QueueDeclareOptions},
+    options::{
+        BasicConsumeOptions, BasicPublishOptions, ExchangeDeclareOptions, QueueBindOptions,
+        QueueDeclareOptions,
+    },
     types::FieldTable,
-    BasicProperties, ConnectionProperties,
+    BasicProperties, ConnectionProperties, ExchangeKind,
 };
 
 type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -41,11 +44,33 @@ async fn main() -> Result<(), StdError> {
     // Create channel for log topic.
     let log_channel = conn.create_channel().await?;
     log_channel
+        .exchange_declare(
+            "log",
+            ExchangeKind::Topic,
+            ExchangeDeclareOptions {
+                durable: true,
+                ..ExchangeDeclareOptions::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
+    log_channel
         .queue_declare("log", QueueDeclareOptions::default(), FieldTable::default())
         .await?;
 
     // Create channel for message topic.
     let msg_channel = conn.create_channel().await?;
+    msg_channel
+        .exchange_declare(
+            "message",
+            ExchangeKind::Topic,
+            ExchangeDeclareOptions {
+                durable: true,
+                ..ExchangeDeclareOptions::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
     msg_channel
         .queue_declare(
             "message",
