@@ -17,11 +17,13 @@ const (
 	EnvVarRabbitMqAddr = "RABBITMQ_ADDR"
 )
 
+// Thread safe container for all received log lines.
 type LogStorage struct {
 	lck  sync.RWMutex
 	logs string
 }
 
+// Push new log line to buffer.
 func (s *LogStorage) PushLine(line string) {
 	s.lck.Lock()
 	defer s.lck.Unlock()
@@ -29,6 +31,7 @@ func (s *LogStorage) PushLine(line string) {
 	s.logs += line + "\n"
 }
 
+// Get all received logs.
 func (s *LogStorage) Get() string {
 	s.lck.RLock()
 	defer s.lck.RUnlock()
@@ -39,6 +42,7 @@ func (s *LogStorage) Get() string {
 func main() {
 	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
 
+	// Retry until RabbitMQ connection is established.
 	conn, err := amqp.Dial(rabbitmqAddr)
 	for err != nil {
 		logrus.Warn("failed to connect; retrying in 2 seconds")
@@ -48,12 +52,14 @@ func main() {
 	}
 	defer conn.Close()
 
+	// Create new topic subscriber.
 	subscriber, err := NewSubscriber(conn)
 	if err != nil {
 		logrus.Fatal("failed to create a subscriber: ", err)
 	}
 	defer subscriber.Close()
 
+	// Get channel to receive topic messages.
 	logMsgs, err := subscriber.Channel()
 	if err != nil {
 		logrus.Fatal("failed to get subscriber channel: ", err)
