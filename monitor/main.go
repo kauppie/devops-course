@@ -46,13 +46,15 @@ func main() {
 
 		conn, err = amqp.Dial(rabbitmqAddr)
 	}
+	defer conn.Close()
 
 	subscriber, err := NewSubscriber(conn)
 	if err != nil {
 		logrus.Fatal("failed to create a subscriber: ", err)
 	}
+	defer subscriber.Close()
 
-	msgs, err := subscriber.Channel()
+	logMsgs, err := subscriber.Channel()
 	if err != nil {
 		logrus.Fatal("failed to get subscriber channel: ", err)
 	}
@@ -62,8 +64,8 @@ func main() {
 
 	// Start log listener.
 	go func() {
-		for msg := range msgs {
-			storage.PushLine(string(msg.Body))
+		for logMsg := range logMsgs {
+			storage.PushLine(string(logMsg.Body))
 		}
 	}()
 

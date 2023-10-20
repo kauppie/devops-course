@@ -6,7 +6,6 @@ import (
 
 type Subscriber struct {
 	channel   *amqp.Channel
-	conn      *amqp.Connection
 	queueName string
 }
 
@@ -53,7 +52,6 @@ func NewSubscriber(conn *amqp.Connection) (*Subscriber, error) {
 
 	return &Subscriber{
 		channel:   channel,
-		conn:      conn,
 		queueName: queue.Name,
 	}, nil
 }
@@ -72,9 +70,6 @@ func (s *Subscriber) Channel() (<-chan amqp.Delivery, error) {
 
 func (s *Subscriber) Close() error {
 	if err := s.channel.Close(); err != nil {
-		return err
-	}
-	if err := s.conn.Close(); err != nil {
 		return err
 	}
 	return nil

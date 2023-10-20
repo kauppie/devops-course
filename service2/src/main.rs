@@ -65,7 +65,10 @@ async fn main() -> Result<(), StdError> {
         .basic_consume(
             "message",
             "service2",
-            lapin::options::BasicConsumeOptions::default(),
+            lapin::options::BasicConsumeOptions {
+                no_ack: true,
+                ..lapin::options::BasicConsumeOptions::default()
+            },
             lapin::types::FieldTable::default(),
         )
         .await?;
@@ -73,16 +76,8 @@ async fn main() -> Result<(), StdError> {
     tokio::spawn({
         let log_channel = log_channel.clone();
         async move {
-            eprintln!("here we are");
-
             while let Some(delivery) = consumer.next().await {
                 let delivery = delivery.expect("error in consumer");
-                delivery
-                    .ack(lapin::options::BasicAckOptions::default())
-                    .await
-                    .expect("failed to ack");
-
-                eprintln!("service2 got delivery");
 
                 let delivery_data = String::from_utf8_lossy(&delivery.data);
                 let log_line = format!("{delivery_data} MSG");
