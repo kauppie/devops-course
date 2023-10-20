@@ -28,6 +28,8 @@ func main() {
 	fullSvc2Address := svc2Address + ":8000"
 
 	rabbitmqAddr := os.Getenv(EnvVarRabbitMqAddr)
+
+	// Retry until RabbitMQ connection is established.
 	conn, err := amqp.Dial(rabbitmqAddr)
 	for err != nil {
 		logrus.Warn("failed to connect; retrying in 2 seconds")
@@ -37,19 +39,21 @@ func main() {
 	}
 	defer conn.Close()
 
+	// Create topic publisher for log topic.
 	logsPub, err := NewPublisher(conn, LogsTopic)
 	if err != nil {
 		logrus.Fatal("failed to create publisher:", err)
 	}
 	defer logsPub.Close()
 
+	// Create topic publisher to message topic.
 	msgsPub, err := NewPublisher(conn, MessagesTopic)
 	if err != nil {
 		logrus.Fatal("failed to create publisher:", err)
 	}
 	defer msgsPub.Close()
 
-	// Send 20 texts to service 2.
+	// Send 20 texts to service 2 and message topic.
 	for i := 1; i <= 20; i++ {
 		addresses, err := resolveAddresses(fullSvc2Address)
 		if err != nil {
@@ -87,6 +91,7 @@ func main() {
 	<-wait
 }
 
+// Get current timestamp with millisecond precision in RFC3339 format.
 func timestampNow() string {
 	return time.Now().UTC().Round(time.Millisecond).Format(time.RFC3339Nano)
 }
