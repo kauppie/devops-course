@@ -15,7 +15,7 @@ Validate that [`inventory.ini`](inventory.ini) has the correct IP address.
 
 I'm using key based method for SSH. Files `key` and `key.pub` contain the private and public keys respectively. `key.pub` is included in the docker image during build time. `key` is used by Ansible to connect to the server. Acknowledgement: keys should not be included in a git repository, but they are here just for testing purposes.
 
-Use the following command to run the playbook:
+You may need to adjust the permissions of the `key` file before running the playbook: `chmod 600 key`. Use the following command to run the playbook:
 
 ```bash
 $ ansible-playbook -i inventory.ini -K --extra-vars 'ansible_user=ssluser ansible_ssh_private_key_file=key' playbook.yaml
