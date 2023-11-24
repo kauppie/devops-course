@@ -1,0 +1,11 @@
+---
+- hosts: all
+  tasks:
+    - name: Ensure latest version of git is installed
+      apt:
+        name: git
+        state: latest
+      become: true
+
+    - name: Query uptime
+      command: uptime
